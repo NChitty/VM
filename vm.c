@@ -2,19 +2,31 @@
 #include <stdlib.h>
 
 #define MAX_PAS_LENGTH 500
+#define JUMP 0x0F // Bottom bits = 1 
+#define HALT 0xF0 // Top bits = 1
+
+// Instruction Register Struct to clean up code
+typedef struct instruction_register {
+    int OP;
+    int L;
+    int M;
+} instruction_register;
 
 int base(int L);
-void print_execution(int line, char *opname, int *IR, int PC, int BP, int SP, int DP, int *pas, int GP);
+void print_execution(int line, char *opname, instruction_register IR, int PC, int BP, int SP, int DP, int *pas, int GP);
 
 // Registers
-int pas[MAX_PAS_LENGTH], bp=0, sp=0, pc=0, dp=0, gp=0, free=0, ic=0, ir[3];
+int pas[MAX_PAS_LENGTH], bp=0, sp=0, pc=0, dp=0, gp=0, FREE=0, ic=0;
+instruction_register ir;
+// 8-bit register to hold flags, currently only jump and hold
+unsigned char flags = 0x00;
 int main(int argc, char *argv[]) {
     // Start of program
     FILE* text;
     if(argc == 2) {
         text=fopen(argv[1], "r");
     } else {
-        println("Use ./vm <file>");
+        printf("Use ./vm <file>\n");
         return -1;
     }
 
@@ -32,40 +44,40 @@ int main(int argc, char *argv[]) {
     //Set all the registers to their appropriate positions
     gp = ic;
     dp = ic-1;
-    free = ic+40;
+    FREE = ic+40;
     bp = ic;
     pc = 0;
-    sp = MAX_PAS_LENGTH-1;
+    sp = MAX_PAS_LENGTH;
 
     //Print Column headers
-    printf("\t\t\t\t\tPC\tBP\tSP\tDP\tdata\n");
+    printf("\t\t\t\tPC\tBP\tSP\tDP\tdata\n");
     //Print initial Values for each Register
-    printf("Initial Values:\t%d\t%d\t%d\t%d\n", pc, bp, sp, dp);
+    printf("Initial Values:\t\t\t%d\t%d\t%d\t%d\n", pc, bp, sp, dp);
 
-    // Halt flag
-    int halt = 1;
     //Program loop
-    while(pc < ic && halt) {
+    while(1) {
         //Fetch Cycle
-        ir[0] = pas[pc];
-        ir[1] = pas[pc+1];
-        ir[2] = pas[pc+2];
+        flags  = 0x00;
+        ir.OP = pas[pc];
+        ir.L = pas[pc+1];
+        ir.M = pas[pc+2];
         int line = pc/3;
+        pc += 3;
         //Execute Cycle
         char* opname;
-        switch(ir[0]) {
+        switch(ir.OP) {
             case 1: // LIT 0, M
                 opname = "LIT";
                 if (bp == gp) {
                     dp += 1;
-                    pas[dp] = ir[2];
+                    pas[dp] = ir.M;
                 } else {
                     sp -= 1;
-                    pas[sp] = ir[2];
+                    pas[sp] = ir.M;
                 }
                 break;
             case 2: // OPR 0 # (0 <= # <= 13)
-                switch(ir[2]) {
+                switch(ir.M) {
                     case 0: // RTN
                         opname = "RTN";
                         sp = bp + 1;
@@ -137,100 +149,126 @@ int main(int argc, char *argv[]) {
                         }
                     case 8: // EQL
                         opname = "EQL";
-                        if(bp == gp)
-                            pas[--dp] = pas[dp] == pas[dp+1];
-                        else
-                            pas[++sp] = pas[sp] == pas[sp-1];
+                        if(bp == gp) {
+                            dp -= 1;
+                            pas[dp] = (pas[dp] == pas[dp+1]);
+                        } else {
+                            sp += 1;
+                            pas[sp] = (pas[sp] == pas[sp-1]);
+                        }
                         break;
                     case 9: // NEQ
                         opname = "NEQ";
-                        if(bp == gp)
-                            pas[--dp] = pas[dp] != pas[dp+1];
-                        else
-                            pas[++sp] = pas[sp] != pas[sp-1];
+                        if(bp == gp) {
+                            dp -= 1;
+                            pas[dp] = (pas[dp] != pas[dp+1]);
+                        } else {
+                            sp += 1;
+                            pas[sp] = pas[sp] != pas[sp-1];
+                        }
                         break;
                     case 10: // LSS
                         opname = "LSS";
-                        if(bp == gp)
-                            pas[--dp] = pas[dp] < pas[dp+1];
-                        else
-                            pas[++sp] = pas[sp] < pas[sp-1];
+                        if(bp == gp) {
+                            dp -= 1;
+                            pas[dp] = pas[dp] < pas[dp+1];
+                        } else {
+                            sp += 1;
+                            pas[sp] = pas[sp] < pas[sp-1];
+                        }
                         break;
                     case 11: // LEQ
                         opname = "LEQ";
-                        if(bp == gp)
-                            pas[--dp] = pas[dp] <= pas[dp+1];
-                        else
-                            pas[++sp] = pas[sp] <= pas[sp-1];
+                        if(bp == gp) {
+                            dp -= 1;
+                            pas[dp] = pas[dp] <= pas[dp+1];
+                        } else {
+                            sp += 1;
+                            pas[sp] = pas[sp] <= pas[sp-1];
+                        }
                         break;
                     case 12: // GTR
                         opname = "GTR";
-                        if(bp == gp)
-                            pas[--dp] = pas[dp] > pas[dp+1];
-                        else
-                            pas[++sp] = pas[sp] > pas[sp-1];
+                        if(bp == gp) {
+                            dp -= 1;
+                            pas[dp] = pas[dp] > pas[dp+1];
+                        } else {
+                            sp += 1;
+                            pas[sp] = pas[sp] > pas[sp-1];
+                        }
                         break;
                     case 13: // GEQ
                         opname = "GEQ";
-                        if(bp == gp)
-                            pas[--dp] = pas[dp] >= pas[dp+1];
-                        else
-                            pas[++sp] = pas[sp] >= pas[sp-1];
+                        if(bp == gp) {
+                            dp -= 1;
+                            pas[dp] = pas[dp] >= pas[dp+1];
+                        } else {
+                            sp += 1;
+                            pas[sp] = pas[sp] >= pas[sp-1];
+                        }
                         break;
                 }
                 break;
             case 3: // LOD
                 opname = "LOD";
-                if(bp == gp)
-                    pas[++dp] = pas[gp+ir[2]];
-                else
-                    if (base(ir[1]) == gp)
-                        pas[--sp] = pas[gp+ir[2]];
+                if(bp == gp) {
+                    dp += 1;
+                    pas[dp] = pas[gp+ir.M];
+                } else {
+                    sp -= 1;
+                    if (base(ir.L) == gp)
+                        pas[sp] = pas[gp+ir.M];
                     else
-                        pas[--sp] = pas[base(ir[1]+ir[2])];
+                        pas[sp] = pas[base(ir.L+ir.M)];
+                }
                 break;
             case 4: // STO
                 opname = "STO";
-                if(bp == gp)
-                    pas[gp+ir[2]] = pas[dp--];
-                else
-                    if(base(ir[1]) == gp)
-                        pas[gp+ir[2]] = pas[sp++];
+                if(bp == gp) {
+                    pas[gp+ir.M] = pas[dp];
+                    dp -= 1;
+                } else {
+                    if(base(ir.L) == gp)
+                        pas[gp+ir.M] = pas[sp];
                     else
-                        pas[base(ir[1])+ir[2]] = pas[sp++]; 
+                        pas[base(ir.L)+ir.M] = pas[sp]; 
+                    sp +=1;
+                }
                 break;
             case 5: // CAL
                 opname = "CAL";
-                pas[sp-1] = base(ir[1]);
+                pas[sp-1] = base(ir.L);
                 pas[sp-2] = bp;
                 pas[sp-3] = pc;
                 bp = sp - 1;
-                pc = ir[2];
+                pc = ir.M;
+                flags |= JUMP;
                 break;
             case 6: // INC
                 opname = "INC";
                 if(bp == gp)
-                    dp = dp + ir[2];
+                    dp = dp + ir.M;
                 else
-                    sp = sp - ir[2];
+                    sp = sp - ir.M;
                 break;
             case 7: // JMP
                 opname = "JMP";
-                pc = ir[2];
+                pc = ir.M;
+                flags |= JUMP;
                 break;
             case 8: // JPC
                 opname = "JPC";
                 if(bp == gp) {
-                    if(pas[dp] == 0) pc = ir[2];
+                    if(pas[dp] == 0) pc = ir.M;
                     dp -= 1;
                 } else {
-                    if(pas[sp] == 0) pc = ir[2];
+                    if(pas[sp] == 0) pc = ir.M;
                     sp += 1;
                 }
                 break;
             case 9: // SYS
                 opname = "SYS";
-                switch(ir[2]) { // switch on M
+                switch(ir.M) { // switch on M
                     case 1:
                         if(bp == gp)
                             printf("Data: %d\n", pas[dp--]);
@@ -238,26 +276,23 @@ int main(int argc, char *argv[]) {
                             printf("Top of Stack Value: %d\n", pas[sp++]);
                         break;
                     case 2:
-                        int val = 0;
                         printf("Please Enter an Integer: ");
-                        scanf("%d", &val);
-                        if(bp == gp)
-                            pas[++dp] = val;
-                        else
-                            pas[--sp] = val;
+                        if(bp == gp) {
+                            dp += 1;
+                            scanf("%d", &pas[dp]);
+                        } else {
+                            sp -= 1;
+                            scanf("%d", &pas[sp]);
+                        }
                         break;
                     case 3:
-                        halt = 0;
+                        flags |= HALT;
                 }
                 break;
         }
-        
         print_execution(line, opname, ir, pc, bp, sp, dp, pas, gp);
-        
-        //jmp condition (do not increase pc)
-        if(line*3 != pc) continue;
-        
-        pc += 3;
+        if((flags & JUMP) == JUMP) continue;
+        if((flags & HALT) == HALT) break; 
     }
     return 0;
 }
@@ -274,10 +309,10 @@ int base(int L) {
     return arb;
 }
 
-void print_execution(int line, char *opname, int *IR, int PC, int BP, int SP, int DP, int *pas, int GP){
+void print_execution(int line, char *opname, instruction_register IR, int PC, int BP, int SP, int DP, int *pas, int GP){
     int i;
     // print out instruction and registers
-    printf("%2d\t%s\t%d\t%d\t%d\t%d\t%d\t%d\t", line, opname, IR[1], IR[2], PC, BP, SP, DP);
+    printf("%2d\t%s\t%d\t%d\t%d\t%d\t%d\t%d\t", line, opname, IR.L, IR.M, PC, BP, SP, DP);
     // print data section
     for (i = GP; i <= DP; i++)
         printf("%d ", pas[i]);
